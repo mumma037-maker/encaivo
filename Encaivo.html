@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<title>Encaivo — by Homar</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#F8F8F8;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+input,select,textarea,button{font-family:'DM Sans',sans-serif}
+input:focus,select:focus,textarea:focus{outline:none}
+button:active:not(:disabled){transform:scale(0.97)}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#E4E4E7;border-radius:4px}
+.fade{animation:fadeUp .3s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.pop{animation:pop .4s cubic-bezier(.175,.885,.32,1.275) both}
+@keyframes pop{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}
+.check{animation:checkAnim .5s cubic-bezier(.175,.885,.32,1.275) both}
+@keyframes checkAnim{from{opacity:0;transform:scale(0.3)}to{opacity:1;transform:scale(1)}}
+.pulse{animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+.slide-up{animation:slideUp .4s cubic-bezier(.175,.885,.32,1.275) both}
+@keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+@media print{
+  body>*{display:none!important}
+  #print-receipt{display:block!important;position:static!important;left:0!important;width:480px!important;margin:0 auto}
+}
+#print-receipt{display:none;position:fixed;left:-9999px;top:0;z-index:-1}
+#capture-receipt{position:fixed;left:-9999px;top:0;z-index:-1;width:480px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="print-receipt"></div>
+<div id="capture-receipt"></div>
+
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef,useMemo}=React;
+
+/* ═══ CONSTANTS ═══ */
+const SUPER_CODE="ENC-SUPER-2024";
+const RECOVERY_CODE="RECOVERY-0000";
+
+const C={
+  orange:"#F97316",orangeDark:"#EA580C",orangeLight:"#FFF7ED",orangeGlow:"rgba(249,115,22,0.15)",
+  black:"#111111",black2:"#1A1A1A",bg:"#F8F8F8",white:"#FFFFFF",
+  text:"#0A0A0A",textSec:"#71717A",border:"#E4E4E7",
+  green:"#22C55E",greenBg:"#F0FDF4",greenBd:"#BBF7D0",
+  red:"#EF4444",redBg:"#FEF2F2",
+  amber:"#F59E0B",amberBg:"#FFFBEB",
+  wa:"#25D366",
+  shadow:"0 2px 12px rgba(0,0,0,0.06)",shadowMd:"0 4px 20px rgba(0,0,0,0.10)",shadowLg:"0 8px 32px rgba(0,0,0,0.14)"
+};
+
+const PLANS={
+  Essai:{label:"Essai Gratuit",color:"#059669",bg:"#ECFDF5",bd:"#6EE7B7",price:"Gratuit",days:7},
+  Complet:{label:"Complet",color:"#1D4ED8",bg:"#EFF6FF",bd:"#93C5FD",price:"2 000 FCFA/mois"},
+  VIP:{label:"VIP",color:"#B45309",bg:"#FEF3C7",bd:"#FCD34D",price:"Sur mesure"}
+};
+
+const COUNTRIES=[
+  {n:"Côte d'Ivoire",f:"🇨🇮",c:"FCFA"},{n:"Sénégal",f:"🇸🇳",c:"FCFA"},{n:"Mali",f:"🇲🇱",c:"FCFA"},
+  {n:"Burkina Faso",f:"🇧🇫",c:"FCFA"},{n:"Niger",f:"🇳🇪",c:"FCFA"},{n:"Togo",f:"🇹🇬",c:"FCFA"},
+  {n:"Bénin",f:"🇧🇯",c:"FCFA"},{n:"Guinée-Bissau",f:"🇬🇼",c:"FCFA"},{n:"Cameroun",f:"🇨🇲",c:"XAF"},
+  {n:"Gabon",f:"🇬🇦",c:"XAF"},{n:"Congo",f:"🇨🇬",c:"XAF"},{n:"Centrafrique",f:"🇨🇫",c:"XAF"},
+  {n:"Tchad",f:"🇹🇩",c:"XAF"},{n:"Guinée Équatoriale",f:"🇬🇶",c:"XAF"},{n:"RD Congo",f:"🇨🇩",c:"CDF"},
+  {n:"Guinée",f:"🇬🇳",c:"GNF"},{n:"Madagascar",f:"🇲🇬",c:"MGA"},{n:"Maroc",f:"🇲🇦",c:"MAD"},
+  {n:"Algérie",f:"🇩🇿",c:"DZD"},{n:"Tunisie",f:"🇹🇳",c:"TND"},{n:"Mauritanie",f:"🇲🇷",c:"MRU"},
+  {n:"Djibouti",f:"🇩🇯",c:"DJF"},{n:"Comores",f:"🇰🇲",c:"KMF"},{n:"Rwanda",f:"🇷🇼",c:"RWF"},
+  {n:"Burundi",f:"🇧🇮",c:"BIF"},{n:"Seychelles",f:"🇸🇨",c:"SCR"},{n:"Maurice",f:"🇲🇺",c:"MUR"},
+  {n:"France",f:"🇫🇷",c:"EUR"},{n:"Belgique",f:"🇧🇪",c:"EUR"},{n:"Suisse",f:"🇨🇭",c:"CHF"},
+  {n:"Luxembourg",f:"🇱🇺",c:"EUR"},{n:"Monaco",f:"🇲🇨",c:"EUR"},{n:"Canada",f:"🇨🇦",c:"CAD"},
+  {n:"Haïti",f:"🇭🇹",c:"HTG"},{n:"Liban",f:"🇱🇧",c:"LBP"},
+  {n:"Dollar américain",f:"🌍",c:"USD"},{n:"Livre sterling",f:"🌍",c:"GBP"}
+];
+
+const SEED=[
+  {id:"c1",code:"COM001",clientName:"Boutique Test",plan:"Complet",active:true,expiryDate:"2027-01-01",expiryMsg:"Votre abonnement a expiré. Contactez votre prestataire.",createdAt:new Date().toISOString(),lastLogin:null,sessionId:null},
+  {id:"c2",code:"VIP001",clientName:"Client VIP",plan:"VIP",active:true,expiryDate:null,expiryMsg:"Contactez votre prestataire.",createdAt:new Date().toISOString(),lastLogin:null,sessionId:null},
+  {id:"c3",code:"ESS001",clientName:"Essai Test",plan:"Essai",active:true,expiryDate:new Date(Date.now()+7*864e5).toISOString().split("T")[0],expiryMsg:"Votre essai a expiré. Contactez votre prestataire pour continuer.",createdAt:new Date().toISOString(),lastLogin:null,sessionId:null}
+];
+
+/* ═══ UTILS ═══ */
+const uid=()=>Math.random().toString(36).slice(2,10);
+const nowISO=()=>new Date().toISOString();
+const todayStr=()=>new Date().toISOString().split("T")[0];
+const fmtD=d=>d?new Date(d).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"}):"—";
+const fmtN=n=>Math.round(n||0).toLocaleString("fr-FR");
+const isExp=c=>c.expiryDate&&new Date(c.expiryDate)<new Date();
+const getMois=()=>new Date().toLocaleDateString("fr-FR",{month:"long",year:"numeric"});
+const getMoisKey=d=>{const dt=d?new Date(d):new Date();return`${dt.getFullYear()}-${dt.getMonth()}`};
+const encode=t=>encodeURIComponent(t);
+
+/* ═══ STORAGE ═══ */
+const sto={
+  get:(k,fb)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb}catch{return fb}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}},
+  del:(k)=>{try{localStorage.removeItem(k)}catch{}}
+};
+
+/* ═══ ICONS ═══ */
+const Ic=({n,s=20,col="currentColor",sx={}})=>{
+  const p={
+    home:<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></>,
+    list:<><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></>,
+    cog:<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></>,
+    plus:<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+    chev:<polyline points="15,18 9,12 15,6"/>,
+    chev2:<polyline points="9,18 15,12 9,6"/>,
+    check:<polyline points="20,6 9,20 4,14"/>,
+    clock:<><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></>,
+    doc:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></>,
+    search:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
+    msg:<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>,
+    out:<><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
+    bell:<><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></>,
+    eye:<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
+    trash:<><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></>,
+    edit:<><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
+    users:<><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></>,
+    copy:<><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></>,
+    img:<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></>,
+    dl:<><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></>,
+    refresh:<><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></>,
+    shield:<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,
+    trend:<><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></>
+  };
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,...sx}}>{p[n]}</svg>;
+};
+
+/* ═══ LOGO ═══ */
+const Logo=({inv,size=1})=>(
+  <div style={{display:"flex",alignItems:"center",gap:8*size}}>
+    <div style={{width:36*size,height:36*size,borderRadius:10*size,background:inv?"rgba(255,255,255,0.12)":C.orange,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:inv?"1.5px solid rgba(255,255,255,0.2)":"none",boxShadow:inv?"none":`0 2px 10px ${C.orangeGlow}`}}>
+      <svg width={20*size} height={20*size} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="2" width="16" height="20" rx="2.5"/>
+        <polyline points="9,11.5 11,13.5 15,9.5"/>
+        <line x1="8" y1="7" x2="13" y2="7"/>
+        <line x1="8" y1="17" x2="11" y2="17"/>
+      </svg>
+    </div>
+    <div>
+      <div style={{fontSize:17*size,fontWeight:800,color:inv?"#fff":C.text,lineHeight:1.1,letterSpacing:"-0.5px",fontFamily:"'Sora',sans-serif"}}>Encaivo</div>
+      <div style={{fontSize:9*size,color:inv?"rgba(255,255,255,0.5)":C.textSec,letterSpacing:"1px",textTransform:"uppercase",fontWeight:600,lineHeight:1}}>by Homar</div>
+    </div>
+  </div>
+);
+
+/* ═══ BASE COMPONENTS ═══ */
+const Btn=({children,onClick,v="orange",full,sm,disabled,style:sx={}})=>{
+  const vs={
+    orange:{bg:C.orange,c:"#fff",bd:C.orange,sh:`0 4px 14px ${C.orangeGlow}`},
+    black:{bg:C.black,c:"#fff",bd:C.black,sh:"0 4px 12px rgba(0,0,0,0.25)"},
+    ghost:{bg:"transparent",c:C.textSec,bd:C.border,sh:"none"},
+    outline:{bg:"transparent",c:C.orange,bd:C.orange,sh:"none"},
+    white:{bg:C.white,c:C.text,bd:C.border,sh:C.shadow},
+    green:{bg:C.wa,c:"#fff",bd:C.wa,sh:"0 4px 14px rgba(37,211,102,0.3)"},
+    danger:{bg:C.redBg,c:C.red,bd:C.redBg,sh:"none"},
+    success:{bg:C.greenBg,c:C.green,bd:C.greenBd,sh:"none"}
+  };
+  const d=vs[v]||vs.orange;
+  return <button onClick={onClick} disabled={disabled} style={{
+    display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,
+    padding:sm?"7px 13px":"12px 22px",background:disabled?"#E4E4E7":d.bg,
+    color:disabled?"#A1A1AA":d.c,border:`1.5px solid ${disabled?"#E4E4E7":d.bd}`,
+    borderRadius:12,fontSize:sm?12:14,fontWeight:700,cursor:disabled?"default":"pointer",
+    width:full?"100%":"auto",boxShadow:disabled?"none":d.sh,opacity:disabled?0.65:1,
+    transition:"all 0.18s ease",...sx
+  }}>{children}</button>;
+};
+
+const Card=({children,style:sx={}})=>(
+  <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.border}`,boxShadow:C.shadow,overflow:"hidden",...sx}}>
+    {children}
+  </div>
+);
+
+const Modal=({open,onClose,title,children,wide})=>{
+  if(!open)return null;
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(4px)"}}>
+    <div className="pop" style={{background:C.white,borderRadius:20,width:"100%",maxWidth:wide?700:480,maxHeight:"92vh",overflowY:"auto",boxShadow:C.shadowLg}}>
+      <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:C.white,zIndex:1,borderRadius:"20px 20px 0 0"}}>
+        <span style={{fontSize:16,fontWeight:700,color:C.text,fontFamily:"'Sora',sans-serif"}}>{title}</span>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.textSec,lineHeight:1,padding:"0 4px"}}>×</button>
+      </div>
+      <div style={{padding:20}}>{children}</div>
+    </div>
+  </div>;
+};
+
+const Fld=({label,hint,value,onChange,placeholder,type="text",as="input",opt,rows=3,children})=>(
+  <div style={{marginBottom:14}}>
+    {label&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:7}}>
+      <label style={{fontSize:11,fontWeight:700,color:C.text,letterSpacing:"0.7px",textTransform:"uppercase"}}>{label}</label>
+      {opt&&<span style={{fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:10,background:C.bg,color:C.textSec,border:`1px solid ${C.border}`}}>Optionnel</span>}
+    </div>}
+    {as==="select"
+      ?<select value={value} onChange={e=>onChange(e.target.value)} style={{width:"100%",padding:"11px 12px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:14,background:C.white,color:C.text,transition:"border-color 0.15s"}}>{children}</select>
+      :as==="textarea"
+      ?<textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={rows} style={{width:"100%",padding:"11px 12px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:14,background:C.white,color:C.text,resize:"vertical"}}/>
+      :<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{width:"100%",padding:"11px 12px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:14,background:C.white,color:C.text,transition:"border-color 0.15s"}}/>
+    }
+    {hint&&<p style={{fontSize:11,color:C.textSec,marginTop:5,lineHeight:1.5}}>{hint}</p>}
+  </div>
+);
+
+const PlanBadge=({plan,sm})=>{
+  const p=PLANS[plan]||PLANS.Essai;
+  return <span style={{fontSize:sm?10:11,fontWeight:700,padding:sm?"2px 7px":"3px 10px",borderRadius:20,background:p.bg,color:p.color,border:`1px solid ${p.bd}`,whiteSpace:"nowrap"}}>{p.label}</span>;
+};
+
+const StatusPill=({active,exp})=>{
+  const s=exp?{bg:C.amberBg,c:C.amber,l:"Expiré"}:active?{bg:C.greenBg,c:C.green,l:"Actif"}:{bg:C.redBg,c:C.red,l:"Désactivé"};
+  return <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,background:s.bg,color:s.c}}>
+    <span style={{width:6,height:6,borderRadius:"50%",background:s.c,flexShrink:0}} className={active&&!exp?"pulse":""}/>
+    {s.l}
+  </span>;
+};
+
+const SecLabel=({children})=>(
+  <div style={{display:"inline-flex",alignItems:"center",background:C.orangeLight,color:C.orange,fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.5px",border:`1px solid rgba(249,115,22,0.2)`}}>
+    {children}
+  </div>
+);
+
+const DarkHeader=({left,center,right})=>(
+  <div style={{background:C.black,height:60,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 2px 16px rgba(0,0,0,0.3)"}}>
+    <div style={{minWidth:60}}>{left}</div>
+    <div style={{flex:1,textAlign:"center"}}>{center}</div>
+    <div style={{minWidth:60,display:"flex",justifyContent:"flex-end"}}>{right}</div>
+  </div>
+);
+
+const BottomNav=({tab,setTab})=>(
+  <div style={{position:"fixed",bottom:0,left:0,right:0,height:66,background:C.white,borderTop:`1px solid ${C.border}`,display:"flex",zIndex:10,boxShadow:"0 -4px 20px rgba(0,0,0,0.06)"}}>
+    {[{id:"home",icon:"home",label:"Accueil"},{id:"history",icon:"list",label:"Historique"},{id:"settings",icon:"cog",label:"Paramètres"}].map(t=>(
+      <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,border:"none",background:"none",cursor:"pointer",color:tab===t.id?C.orange:C.textSec}}>
+        <div style={{padding:"5px 14px",borderRadius:10,background:tab===t.id?C.orangeLight:"transparent",transition:"background 0.15s"}}>
+          <Ic n={t.icon} s={20} col={tab===t.id?C.orange:C.textSec}/>
+        </div>
+        <span style={{fontSize:10,fontWeight:tab===t.id?700:500,lineHeight:1}}>{t.label}</span>
+      </button>
+    ))}
+  </div>
+);
+
+/* ═══ RECEIPT TEMPLATE (modern card design) ═══ */
+const buildReceiptHTML=(r,p)=>{
+  const reste=Math.max(0,(r.montantTotal||0)-(r.montantPaye||0));
+  const cur=r.currency||p.currency||"FCFA";
+  const paid=reste===0;
+  return `
+<div style="width:480px;font-family:'DM Sans',Arial,sans-serif;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.15)">
+  <!-- TOP DARK ZONE -->
+  <div style="background:#111111;padding:22px 24px 18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:30px;height:30px;border-radius:8px;background:#F97316;display:flex;align-items:center;justify-content:center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2.5"/><polyline points="9,11.5 11,13.5 15,9.5"/><line x1="8" y1="7" x2="13" y2="7"/></svg>
+        </div>
+        <div>
+          <div style="color:#fff;font-size:13px;font-weight:800;letter-spacing:-0.3px">Encaivo</div>
+          <div style="color:rgba(255,255,255,0.4);font-size:8px;letter-spacing:1px;text-transform:uppercase">by Homar</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="color:rgba(255,255,255,0.5);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Reçu N°</div>
+        <div style="color:#fff;font-size:13px;font-weight:800;font-family:monospace;letter-spacing:1px">${r.numero}</div>
+      </div>
+    </div>
+    <div style="height:1px;background:rgba(255,255,255,0.08);margin-bottom:14px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <div>
+        <div style="color:rgba(255,255,255,0.4);font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Boutique</div>
+        <div style="color:#fff;font-size:14px;font-weight:700">${p.name}</div>
+        <div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:1px">${p.phone}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="color:rgba(255,255,255,0.4);font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Date</div>
+        <div style="color:rgba(255,255,255,0.8);font-size:12px;font-weight:600">${new Date(r.date).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLIENT + STATUS ZONE -->
+  <div style="background:#fff;padding:20px 24px">
+    <!-- Status badge -->
+    <div style="text-align:center;margin-bottom:18px">
+      ${paid
+        ?`<div style="display:inline-flex;align-items:center;gap:6px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:30px;padding:6px 16px;font-size:13px;font-weight:700;color:#16A34A">✓ Payé intégralement</div>`
+        :`<div style="display:inline-flex;align-items:center;gap:6px;background:#FFF7ED;border:1.5px solid rgba(249,115,22,0.3);border-radius:30px;padding:6px 16px;font-size:13px;font-weight:700;color:#F97316">⏱ Paiement partiel</div>`
+      }
+    </div>
+
+    <!-- FROM → TO -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+      <div style="flex:1;background:#F8F8F8;border-radius:12px;padding:12px">
+        <div style="font-size:9px;color:#71717A;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px">De</div>
+        <div style="font-size:13px;font-weight:700;color:#0A0A0A">${p.name}</div>
+        <div style="font-size:11px;color:#71717A;margin-top:1px">${p.phone}</div>
+      </div>
+      <div style="width:32px;height:32px;background:#FFF7ED;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12,5 19,12 12,19"/></svg>
+      </div>
+      <div style="flex:1;background:#F8F8F8;border-radius:12px;padding:12px">
+        <div style="font-size:9px;color:#71717A;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px">Pour</div>
+        <div style="font-size:13px;font-weight:700;color:#0A0A0A">${r.nomClient}</div>
+        <div style="font-size:11px;color:#71717A;margin-top:1px">${r.telephoneClient}</div>
+        <div style="font-size:11px;color:#71717A">${r.paysClient}</div>
+      </div>
+    </div>
+
+    <!-- OBJET -->
+    <div style="background:#F8F8F8;border-radius:12px;padding:14px;margin-bottom:16px">
+      <div style="font-size:9px;color:#71717A;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:5px">Objet du paiement</div>
+      <div style="font-size:14px;font-weight:600;color:#0A0A0A;margin-bottom:8px">${r.objet}</div>
+      <span style="background:#FFF7ED;border:1px solid rgba(249,115,22,0.25);color:#F97316;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">${r.modePaiement}</span>
+    </div>
+  </div>
+
+  <!-- BIG AMOUNT ZONE -->
+  <div style="background:#F97316;padding:26px 24px;text-align:center;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,0.06)"></div>
+    <div style="position:absolute;bottom:-20px;left:-20px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.05)"></div>
+    <div style="color:rgba(255,255,255,0.8);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px">Montant perçu</div>
+    <div style="color:#fff;font-size:52px;font-weight:800;font-family:'Sora',sans-serif;letter-spacing:-2px;line-height:1">${fmtN(r.montantPaye)}</div>
+    <div style="color:rgba(255,255,255,0.75);font-size:16px;font-weight:600;margin-top:4px">${cur}</div>
+  </div>
+
+  <!-- BALANCE ZONE -->
+  <div style="background:#1A1A1A;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">
+    ${reste>0
+      ?`<div><div style="color:rgba(255,255,255,0.4);font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:3px">Reste à payer</div><div style="color:#F97316;font-size:22px;font-weight:800;font-family:'Sora',sans-serif">${fmtN(reste)} ${cur}</div></div>`
+      :`<div style="color:#22C55E;font-size:14px;font-weight:700">✓ Solde = 0 ${cur}</div>`
+    }
+    <div style="text-align:right">
+      <div style="color:rgba(255,255,255,0.3);font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:3px">Total convenu</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:14px;font-weight:600">${fmtN(r.montantTotal)} ${cur}</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div style="background:#fff;padding:14px 24px;text-align:center;border-top:1px solid #E4E4E7">
+    <div style="font-size:11px;color:#A1A1AA;font-style:italic;margin-bottom:5px">Merci pour votre confiance.</div>
+    <div style="font-size:9px;color:#D4D4D8;letter-spacing:0.5px">Document généré par Encaivo · by Homar</div>
+  </div>
+</div>`;
+};
+
+const ReceiptDisplay=({receipt,profile,webMode=false})=>{
+  if(!receipt||!profile)return null;
+  const reste=Math.max(0,(receipt.montantTotal||0)-(receipt.montantPaye||0));
+  const cur=receipt.currency||profile.currency||"FCFA";
+  const paid=reste===0;
+
+  if(webMode){
+    return <div style={{fontFamily:"'DM Sans',sans-serif",background:C.white,borderRadius:20,overflow:"hidden",boxShadow:C.shadowLg}}>
+      {/* Top dark */}
+      <div style={{background:C.black,padding:"20px 20px 16px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <Logo inv size={0.8}/>
+          <div style={{textAlign:"right"}}>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,textTransform:"uppercase",letterSpacing:"0.5px"}}>Reçu N°</div>
+            <div style={{color:"#fff",fontSize:13,fontWeight:800,fontFamily:"monospace",letterSpacing:"1px"}}>{receipt.numero}</div>
+          </div>
+        </div>
+        <div style={{height:1,background:"rgba(255,255,255,0.08)",marginBottom:12}}/>
+        <div style={{display:"flex",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,textTransform:"uppercase",letterSpacing:"1px",marginBottom:2}}>Boutique</div>
+            <div style={{color:"#fff",fontSize:13,fontWeight:700}}>{profile.name}</div>
+            <div style={{color:"rgba(255,255,255,0.5)",fontSize:11}}>{profile.phone}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,textTransform:"uppercase",letterSpacing:"1px",marginBottom:2}}>Date</div>
+            <div style={{color:"rgba(255,255,255,0.7)",fontSize:12,fontWeight:600}}>{new Date(receipt.date).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}</div>
+          </div>
+        </div>
+      </div>
+      {/* Body */}
+      <div style={{background:C.white,padding:"18px 20px"}}>
+        <div style={{textAlign:"center",marginBottom:16}}>
+          {paid
+            ?<div style={{display:"inline-flex",alignItems:"center",gap:6,background:C.greenBg,border:`1.5px solid ${C.greenBd}`,borderRadius:30,padding:"5px 14px",fontSize:12,fontWeight:700,color:C.green}}>✓ Payé intégralement</div>
+            :<div style={{display:"inline-flex",alignItems:"center",gap:6,background:C.orangeLight,border:`1.5px solid rgba(249,115,22,0.3)`,borderRadius:30,padding:"5px 14px",fontSize:12,fontWeight:700,color:C.orange}}>⏱ Paiement partiel</div>
+          }
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <div style={{flex:1,background:C.bg,borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9,color:C.textSec,textTransform:"uppercase",letterSpacing:"1px",fontWeight:700,marginBottom:3}}>De</div>
+            <div style={{fontSize:13,fontWeight:700,color:C.text}}>{profile.name}</div>
+            <div style={{fontSize:11,color:C.textSec}}>{profile.phone}</div>
+          </div>
+          <div style={{width:28,height:28,background:C.orangeLight,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <Ic n="chev2" s={14} col={C.orange}/>
+          </div>
+          <div style={{flex:1,background:C.bg,borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9,color:C.textSec,textTransform:"uppercase",letterSpacing:"1px",fontWeight:700,marginBottom:3}}>Pour</div>
+            <div style={{fontSize:13,fontWeight:700,color:C.text}}>{receipt.nomClient}</div>
+            <div style={{fontSize:11,color:C.textSec}}>{receipt.telephoneClient}</div>
+            <div style={{fontSize:11,color:C.textSec}}>{receipt.paysClient}</div>
+          </div>
+        </div>
+        <div style={{background:C.bg,borderRadius:10,padding:"12px",marginBottom:0}}>
+          <div style={{fontSize:9,color:C.textSec,textTransform:"uppercase",letterSpacing:"1px",fontWeight:700,marginBottom:4}}>Objet</div>
+          <div style={{fontSize:14,fontWeight:600,color:C.text,marginBottom:6}}>{receipt.objet}</div>
+          <span style={{background:C.orangeLight,border:`1px solid rgba(249,115,22,0.25)`,color:C.orange,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{receipt.modePaiement}</span>
+        </div>
+      </div>
+      {/* Amount */}
+      <div style={{background:C.orange,padding:"22px 20px",textAlign:"center",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-25,right:-25,width:100,height:100,borderRadius:"50%",background:"rgba(255,255,255,0.07)"}}/>
+        <div style={{color:"rgba(255,255,255,0.8)",fontSize:10,textTransform:"uppercase",letterSpacing:"1.5px",fontWeight:700,marginBottom:4}}>Montant perçu</div>
+        <div style={{color:"#fff",fontSize:42,fontWeight:800,fontFamily:"'Sora',sans-serif",letterSpacing:"-1px",lineHeight:1}}>{fmtN(receipt.montantPaye)}</div>
+        <div style={{color:"rgba(255,255,255,0.75)",fontSize:15,fontWeight:600,marginTop:3}}>{cur}</div>
+      </div>
+      {/* Balance */}
+      <div style={{background:C.black2,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        {reste>0
+          ?<div>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,textTransform:"uppercase",letterSpacing:"1px",fontWeight:700,marginBottom:2}}>Reste à payer</div>
+            <div style={{color:C.orange,fontSize:20,fontWeight:800,fontFamily:"'Sora',sans-serif"}}>{fmtN(reste)} {cur}</div>
+          </div>
+          :<div style={{color:C.green,fontSize:13,fontWeight:700}}>✓ Solde = 0 {cur}</div>
+        }
+        <div style={{textAlign:"right"}}>
+          <div style={{color:"rgba(255,255,255,0.3)",fontSize:9,textTransform:"uppercase",letterSpacing:"1px",fontWeight:700,marginBottom:2}}>Total convenu</div>
+          <div style={{color:"rgba(255,255,255,0.55)",fontSize:13,fontWeight:600}}>{fmtN(receipt.montantTotal)} {cur}</div>
+        </div>
+      </div>
+      {/* Footer */}
+      <div style={{background:C.white,padding:"12px 20px",textAlign:"center",borderTop:`1px solid ${C.border}`}}>
+        <div style={{fontSize:11,color:C.textSec,fontStyle:"italic",marginBottom:4}}>Merci pour votre confiance.</div>
+        <div style={{fontSize:9,color:"#D4D4D8"}}>Document généré par Encaivo · by Homar</div>
+      </div>
+    </div>;
+  }
+  return null;
+};
+
+/* ═══ LOGIN ═══ */
+function LoginScreen({clients,subAdmins,onLogin,fails,onFail}){
+  const [code,setCode]=useState("");
+  const [err,setErr]=useState("");
+  const [loading,setL]=useState(false);
+  const [found,setFound]=useState(null);
+  const [step,setStep]=useState(1);
+  const blocked=fails>=3;
+
+  const handle=()=>{
+    if(blocked){setErr("Trop de tentatives. Patientez quelques minutes.");return;}
+    if(!code.trim()){setErr("Entrez votre code d'accès.");return;}
+    setL(true);
+    setTimeout(()=>{
+      setL(false);
+      const c=code.trim().toUpperCase();
+      if(c===SUPER_CODE||c===RECOVERY_CODE){onLogin("superadmin",null,c);return;}
+      const sa=subAdmins.find(s=>s.code===c);
+      if(sa){
+        if(!sa.active){setErr("Accès suspendu. Contactez l'administrateur principal.");onFail();return;}
+        onLogin("subadmin",sa,c);return;
+      }
+      const cl=clients.find(x=>x.code===c);
+      if(!cl){setErr("Code invalide.");onFail();return;}
+      if(!cl.active||isExp(cl)){setErr(cl.expiryMsg||"Code désactivé. Contactez votre prestataire.");onFail();return;}
+      const saved=sto.get(`enc-session-${c}`,"");
+      if(cl.sessionId&&cl.sessionId!==saved){setErr("Ce code est actif sur un autre appareil. Contactez votre prestataire si vous avez changé d'appareil.");onFail();return;}
+      setFound(cl);setStep(2);setErr("");
+    },500);
+  };
+
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",top:-100,right:-80,width:300,height:300,borderRadius:"50%",background:C.orangeLight,opacity:0.6}}/>
+    <div style={{position:"absolute",bottom:-80,left:-80,width:220,height:220,borderRadius:"50%",background:C.orangeLight,opacity:0.5}}/>
+    <div style={{width:"100%",maxWidth:400,zIndex:1}} className="fade">
+      <div style={{textAlign:"center",marginBottom:32}}>
+        <Logo size={1.15}/>
+        <p style={{color:C.textSec,fontSize:14,marginTop:10,lineHeight:1.5}}>Vos reçus de paiement en 60 secondes</p>
+      </div>
+      <Card style={{boxShadow:C.shadowLg,borderRadius:20}}>
+        <div style={{padding:28}}>
+          {step===1&&<>
+            <h2 style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:6,fontFamily:"'Sora',sans-serif"}}>Accès sécurisé</h2>
+            <p style={{fontSize:13,color:C.textSec,marginBottom:22,lineHeight:1.6}}>Entrez votre code personnel pour accéder à votre espace.</p>
+            {blocked&&<div style={{background:C.redBg,color:C.red,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,fontWeight:600}}>🚫 Trop de tentatives. Patientez avant de réessayer.</div>}
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:C.text,letterSpacing:"0.8px",textTransform:"uppercase",marginBottom:8}}>Code d'accès</label>
+            <input type="text" value={code} onChange={e=>{setCode(e.target.value.toUpperCase());setErr("");}} onKeyDown={e=>e.key==="Enter"&&handle()} placeholder="Ex: COM001" maxLength={25}
+              style={{width:"100%",padding:"15px 16px",fontSize:22,fontWeight:800,textAlign:"center",letterSpacing:4,fontFamily:"monospace",border:`2px solid ${err?C.red:C.border}`,borderRadius:12,background:C.bg,color:C.text,transition:"border-color 0.2s"}}/>
+            {err&&<div style={{background:C.redBg,color:C.red,borderRadius:10,padding:"10px 14px",marginTop:8,fontSize:13,fontWeight:500}}>{err}</div>}
+            <Btn onClick={handle} disabled={loading||blocked} full sx={{marginTop:18,height:50}}>
+              {loading?"Vérification...":"Continuer →"}
+            </Btn>
+          </>}
+          {step===2&&found&&<div className="fade">
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{width:68,height:68,background:C.greenBg,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",border:`2px solid ${C.greenBd}`}} className="check">
+                <Ic n="check" s={30} col={C.green}/>
+              </div>
+              <h2 style={{fontSize:19,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif",marginBottom:4}}>Code reconnu !</h2>
+              <p style={{fontSize:13,color:C.textSec}}>Confirmez pour accéder à votre espace.</p>
+            </div>
+            <div style={{background:C.bg,borderRadius:12,padding:16,marginBottom:18,textAlign:"center",border:`1px solid ${C.border}`}}>
+              <p style={{fontSize:11,color:C.textSec,marginBottom:3}}>Accès pour</p>
+              <p style={{fontSize:19,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif",marginBottom:6}}>{found.clientName}</p>
+              <PlanBadge plan={found.plan}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <Btn v="ghost" onClick={()=>{setStep(1);setCode("");setFound(null);}} full>← Retour</Btn>
+              <Btn onClick={()=>onLogin("client",found,code.trim().toUpperCase())} full>Accéder à Encaivo</Btn>
+            </div>
+          </div>}
+        </div>
+      </Card>
+      <p style={{textAlign:"center",fontSize:12,color:C.textSec,marginTop:14}}>Pas encore de code ? Contactez votre prestataire Encaivo.</p>
+    </div>
+  </div>;
+}
+
+/* ═══ PROFILE SETUP ═══ */
+function ProfileSetup({code,onDone}){
+  const [name,setName]=useState("");
+  const [phone,setPhone]=useState("");
+  const [country,setCountry]=useState(COUNTRIES[0]);
+  const [currency,setCurrency]=useState(COUNTRIES[0].c);
+  const [err,setErr]=useState("");
+
+  const handle=()=>{
+    if(!name.trim()||!phone.trim()){setErr("Remplissez tous les champs.");return;}
+    sto.set(`enc-profile-${code}`,{name:name.trim(),phone:phone.trim(),country:country.n,currency});
+    onDone();
+  };
+
+  return <div style={{minHeight:"100vh",background:C.bg}}>
+    <DarkHeader center={<Logo inv size={0.85}/>}/>
+    <div style={{maxWidth:560,margin:"0 auto",padding:"24px 16px"}} className="fade">
+      <h2 style={{fontSize:22,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif",marginBottom:6}}>Configurons votre profil</h2>
+      <p style={{fontSize:13,color:C.textSec,marginBottom:20,lineHeight:1.6}}>Ces informations apparaîtront sur tous vos reçus. À faire une seule fois.</p>
+      <div style={{background:C.orangeLight,borderRadius:12,padding:"12px 14px",marginBottom:20,border:`1px solid rgba(249,115,22,0.2)`,fontSize:13,color:C.orangeDark,fontWeight:500}}>
+        ✦ Ces informations identifient votre boutique sur chaque reçu émis.
+      </div>
+      {err&&<div style={{background:C.redBg,color:C.red,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,fontWeight:600}}>{err}</div>}
+      <Fld label="Nom de votre boutique ou votre nom" value={name} onChange={setName} placeholder="Ex: Boutique Aminata, Koné Services" hint="Ce nom apparaîtra sur tous vos reçus"/>
+      <Fld label="Votre numéro de téléphone" value={phone} onChange={setPhone} placeholder="+225 07 00 00 00" type="tel" hint="Visible sur vos reçus pour que vos clients vous contactent"/>
+      <Fld label="Votre pays" as="select" value={country.n} onChange={v=>{const co=COUNTRIES.find(x=>x.n===v)||COUNTRIES[0];setCountry(co);setCurrency(co.c);}}>
+        {COUNTRIES.map(co=><option key={co.n} value={co.n}>{co.f} {co.n} — {co.c}</option>)}
+      </Fld>
+      <Fld label="Votre devise" as="select" value={currency} onChange={setCurrency}>
+        {[...new Map(COUNTRIES.map(co=>[co.c,co])).values()].map(co=><option key={co.c} value={co.c}>{co.c}</option>)}
+      </Fld>
+      <Btn onClick={handle} full sx={{height:50,marginTop:4}}>Enregistrer mon profil</Btn>
+    </div>
+  </div>;
+}
+
+/* ═══ NEW RECEIPT FORM ═══ */
+function NewReceiptForm({code,profile,onDone,onBack}){
+  const counter=(sto.get(`enc-receipt-counter-${code}`,0)||0)+1;
+  const numero=`REC-${String(counter).padStart(3,"0")}`;
+  const contacts=sto.get(`enc-contacts-${code}`,[]);
+  const currency=profile?.currency||"FCFA";
+
+  const [nomClient,setNC]=useState("");
+  const [telClient,setTC]=useState("");
+  const [paysClient,setPC]=useState(profile?.country||COUNTRIES[0].n);
+  const [objet,setOb]=useState("");
+  const [montantTotal,setMT]=useState("");
+  const [montantPaye,setMP]=useState("");
+  const [mode,setMode]=useState("Cash");
+  const [date,setDate]=useState(todayStr());
+  const [showPreview,setSP]=useState(false);
+  const [errs,setErrs]=useState({});
+
+  const reste=Math.max(0,(parseFloat(montantTotal)||0)-(parseFloat(montantPaye)||0));
+  const modes=[{k:"Cash",e:"💵"},{k:"Mobile Money",e:"📱"},{k:"Virement",e:"🏦"},{k:"Chèque",e:"📄"}];
+
+  const fillContact=v=>{
+    const co=contacts.find(x=>x.phone===v);
+    if(co){setNC(co.name);setTC(co.phone);setPC(co.country);}
+  };
+
+  const validate=()=>{
+    const e={};
+    if(!nomClient.trim())e.nc="Obligatoire";
+    if(!telClient.trim())e.tc="Obligatoire";
+    if(!objet.trim())e.ob="Obligatoire";
+    if(!montantTotal||parseFloat(montantTotal)<=0)e.mt="Obligatoire";
+    if(montantPaye===""||montantPaye===null)e.mp="Obligatoire";
+    setErrs(e);
+    return Object.keys(e).length===0;
+  };
+
+  const handleGenerate=()=>{
+    if(!validate())return;
+    const r={id:uid(),numero,nomClient:nomClient.trim(),telephoneClient:telClient.trim(),paysClient,objet:objet.trim(),montantTotal:parseFloat(montantTotal),montantPaye:parseFloat(montantPaye),reste,modePaiement:mode,date,currency,createdAt:nowISO()};
+    const receipts=sto.get(`enc-receipts-${code}`,[]);
+    sto.set(`enc-receipts-${code}`,[r,...receipts]);
+    sto.set(`enc-receipt-counter-${code}`,counter);
+    if(!contacts.find(x=>x.phone===telClient.trim())){
+      sto.set(`enc-contacts-${code}`,[...contacts,{name:nomClient.trim(),phone:telClient.trim(),country:paysClient}]);
+    }
+    onDone(r);
+  };
+
+  const previewR={id:"p",numero,nomClient,telephoneClient:telClient,paysClient,objet,montantTotal:parseFloat(montantTotal)||0,montantPaye:parseFloat(montantPaye)||0,reste,modePaiement:mode,date,currency};
+
+  return <div style={{minHeight:"100vh",background:C.bg}}>
+    <DarkHeader
+      left={<button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,color:"#fff",fontSize:14,fontWeight:600}}><Ic n="chev" s={20} col="#fff"/>Retour</button>}
+      center={<span style={{color:"#fff",fontSize:15,fontWeight:700}}>Nouveau reçu</span>}
+      right={<span style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontFamily:"monospace",fontWeight:700}}>{numero}</span>}
+    />
+    <div style={{maxWidth:640,margin:"0 auto",padding:"16px 16px 110px"}} className="fade">
+
+      {/* CLIENT */}
+      <SecLabel>Client</SecLabel>
+      {contacts.length>0&&<div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:11,fontWeight:700,color:C.text,letterSpacing:"0.7px",textTransform:"uppercase",marginBottom:7}}>Client existant</label>
+        <select onChange={e=>fillContact(e.target.value)} defaultValue="" style={{width:"100%",padding:"11px 12px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:14,background:C.white,color:C.text}}>
+          <option value="">Choisir un client existant...</option>
+          {contacts.map(co=><option key={co.phone} value={co.phone}>{co.name} — {co.phone}</option>)}
+        </select>
+        <p style={{fontSize:11,color:C.textSec,marginTop:5}}>Ou remplissez manuellement ci-dessous</p>
+      </div>}
+      <Fld label="Nom du client" value={nomClient} onChange={setNC} placeholder="Ex: Ibrahim Koné"/>
+      {errs.nc&&<div style={{color:C.red,fontSize:12,marginTop:-10,marginBottom:10,fontWeight:600}}>⚠ {errs.nc}</div>}
+      <Fld label="Téléphone du client" value={telClient} onChange={setTC} placeholder="+225 07 00 00 00" type="tel"/>
+      {errs.tc&&<div style={{color:C.red,fontSize:12,marginTop:-10,marginBottom:10,fontWeight:600}}>⚠ {errs.tc}</div>}
+      <Fld label="Pays du client" as="select" value={paysClient} onChange={setPC}>
+        {COUNTRIES.map(co=><option key={co.n} value={co.n}>{co.f} {co.n}</option>)}
+      </Fld>
+
+      {/* PAIEMENT */}
+      <SecLabel>Paiement</SecLabel>
+      <Fld label="Objet du paiement" value={objet} onChange={setOb} placeholder="Ex: Achat tissus, Loyer mars, Réparation"/>
+      {errs.ob&&<div style={{color:C.red,fontSize:12,marginTop:-10,marginBottom:10,fontWeight:600}}>⚠ {errs.ob}</div>}
+
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:11,fontWeight:700,color:C.text,letterSpacing:"0.7px",textTransform:"uppercase",marginBottom:7}}>Montant total convenu</label>
+        <div style={{position:"relative"}}>
+          <input type="number" min="0" value={montantTotal} onChange={e=>setMT(e.target.value)} placeholder="Le prix total convenu"
+            style={{width:"100%",padding:"11px 60px 11px 12px",border:`1.5px solid ${errs.mt?C.red:C.border}`,borderRadius:10,fontSize:14,background:C.white,color:C.text}}/>
+          <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:C.orange,fontWeight:700,fontSize:13,pointerEvents:"none"}}>{currency}</span>
+        </div>
+        {errs.mt&&<div style={{color:C.red,fontSize:12,marginTop:5,fontWeight:600}}>⚠ {errs.mt}</div>}
+      </div>
+
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:11,fontWeight:700,color:C.text,letterSpacing:"0.7px",textTransform:"uppercase",marginBottom:7}}>Montant payé aujourd'hui</label>
+        <div style={{position:"relative"}}>
+          <input type="number" min="0" value={montantPaye} onChange={e=>setMP(e.target.value)} placeholder="Ce que le client vous donne maintenant"
+            style={{width:"100%",padding:"11px 60px 11px 12px",border:`1.5px solid ${errs.mp?C.red:C.border}`,borderRadius:10,fontSize:14,background:C.white,color:C.text}}/>
+          <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:C.orange,fontWeight:700,fontSize:13,pointerEvents:"none"}}>{currency}</span>
+        </div>
+        {errs.mp&&<div style={{color:C.red,fontSize:12,marginTop:5,fontWeight:600}}>⚠ {errs.mp}</div>}
+      </div>
+
+      {montantPaye!==""&&parseFloat(montantPaye)>=0&&(
+        <div style={{borderRadius:14,padding:"14px 16px",marginBottom:16,background:reste>0?C.orangeLight:C.greenBg,border:`1.5px solid ${reste>0?"rgba(249,115,22,0.25)":C.greenBd}`,textAlign:"center"}}>
+          {reste>0
+            ?<><div style={{fontSize:12,color:C.orangeDark,marginBottom:4,fontWeight:600}}>Reste à payer</div><div style={{fontSize:24,fontWeight:800,color:C.orange,fontFamily:"'Sora',sans-serif"}}>{fmtN(reste)} {currency}</div></>
+            :<div style={{fontSize:15,fontWeight:700,color:C.green}}>✓ Payé intégralement</div>
+          }
+        </div>
+      )}
+
+      {/* MODE */}
+      <SecLabel>Mode de paiement</SecLabel>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+        {modes.map(m=>(
+          <button key={m.k} onClick={()=>setMode(m.k)} style={{borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center",border:`2px solid ${mode===m.k?C.orange:C.border}`,background:mode===m.k?C.orangeLight:C.white,transition:"all 0.15s"}}>
+            <div style={{fontSize:24,marginBottom:5}}>{m.e}</div>
+            <div style={{fontSize:13,fontWeight:mode===m.k?700:500,color:mode===m.k?C.orange:C.textSec}}>{m.k}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* DATE */}
+      <SecLabel>Date</SecLabel>
+      <Fld label="Date du reçu" type="date" value={date} onChange={setDate}/>
+
+      <Btn v="ghost" full sx={{marginBottom:10,height:46}} onClick={()=>setSP(true)}>
+        <Ic n="eye" s={16} col={C.textSec}/> Aperçu avant génération
+      </Btn>
+      <Btn full sx={{height:56}} onClick={handleGenerate}>
+        <Ic n="doc" s={18} col="#fff"/> Générer le reçu
+      </Btn>
+    </div>
+
+    <Modal open={showPreview} onClose={()=>setSP(false)} title="Aperçu du reçu">
+      <ReceiptDisplay receipt={previewR} profile={profile} webMode/>
+    </Modal>
+  </div>;
+}
+
+/* ═══ EXPORT SCREEN ═══ */
+function ExportScreen({receipt,profile,onNew,onHome}){
+  const [dlStatus,setDS]=useState("");
+  const [dlErr,setDE]=useState("");
+  const [loading,setL]=useState("");
+  const cur=receipt?.currency||profile?.currency||"FCFA";
+  const reste=Math.max(0,(receipt?.montantTotal||0)-(receipt?.montantPaye||0));
+
+  const waMsg=()=>{
+    let m=`Bonjour ${receipt.nomClient}, voici votre reçu N°${receipt.numero} de ${fmtN(receipt.montantPaye)} ${cur} pour ${receipt.objet}.`;
+    if(reste>0)m+=` Il reste ${fmtN(reste)} ${cur} à régler.`;
+    m+=` Merci pour votre confiance ! — ${profile.name} | ${profile.phone}`;
+    return m;
+  };
+
+  const handleWA=()=>window.open(`https://wa.me/?text=${encode(waMsg())},"_blank");
+
+  const handlePDF=()=>{
+    const zone=document.getElementById("print-receipt");
+    zone.innerHTML=buildReceiptHTML(receipt,profile);
+    zone.style.display="block";
+    setTimeout(()=>{window.print();zone.style.display="none";zone.innerHTML="";},100);
+    setDS("✓ Fenêtre d'impression ouverte — choisissez Enregistrer en PDF");
+  };
+
+  const handleImage=async()=>{
+    setDE("");setDS("");setL("img");
+    try{
+      if(!window.html2canvas){
+        await new Promise((ok,fail)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";s.onload=ok;s.onerror=fail;document.head.appendChild(s);});
+      }
+      const zone=document.getElementById("capture-receipt");
+      zone.innerHTML=buildReceiptHTML(receipt,profile);
+      zone.style.display="block";
+      await new Promise(r=>setTimeout(r,400));
+      const canvas=await window.html2canvas(zone.firstChild,{scale:2,useCORS:true,backgroundColor:"#ffffff",logging:false});
+      zone.style.display="none";zone.innerHTML="";
+      const a=document.createElement("a");
+      a.download=`recu-${receipt.numero}-${receipt.nomClient.replace(/\s+/g,"-")}.jpg`;
+      a.href=canvas.toDataURL("image/jpeg",0.93);
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      setDS("✓ Image enregistrée dans vos téléchargements");
+    }catch(e){
+      console.error(e);
+      setDE("Erreur lors de la génération. Utilisez le bouton PDF à la place.");
+    }
+    setL("");
+  };
+
+  return <div style={{minHeight:"100vh",background:C.black,display:"flex",flexDirection:"column"}}>
+    {/* Top dark zone */}
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 20px 20px"}}>
+      <div style={{width:80,height:80,background:C.greenBg,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16,border:`2px solid ${C.greenBd}`}} className="check">
+        <Ic n="check" s={36} col={C.green}/>
+      </div>
+      <h2 style={{fontSize:26,fontWeight:800,color:"#fff",fontFamily:"'Sora',sans-serif",marginBottom:6}}>Reçu généré !</h2>
+      <p style={{fontSize:14,color:"rgba(255,255,255,0.5)",marginBottom:10}}>{receipt?.nomClient}</p>
+      <div style={{fontSize:48,fontWeight:800,color:C.orange,fontFamily:"'Sora',sans-serif",letterSpacing:"-2px",lineHeight:1}}>{fmtN(receipt?.montantPaye)}</div>
+      <div style={{fontSize:18,color:"rgba(255,255,255,0.6)",fontWeight:600,marginTop:4,marginBottom:10}}>{cur}</div>
+      {reste>0
+        ?<div style={{background:"rgba(249,115,22,0.15)",border:`1px solid rgba(249,115,22,0.3)`,borderRadius:12,padding:"8px 16px",fontSize:15,fontWeight:700,color:C.orange}}>Reste : {fmtN(reste)} {cur}</div>
+        :<div style={{background:"rgba(34,197,94,0.12)",border:`1px solid rgba(34,197,94,0.25)`,borderRadius:12,padding:"8px 16px",fontSize:14,fontWeight:700,color:C.green}}>✓ Paiement intégral</div>
+      }
+    </div>
+
+    {/* Bottom white card */}
+    <div className="slide-up" style={{background:C.white,borderRadius:"24px 24px 0 0",padding:"24px 20px 32px"}}>
+      <p style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:16,textAlign:"center"}}>Partagez ce reçu</p>
+
+      <Btn v="green" full sx={{height:56,marginBottom:12}} onClick={handleWA}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Envoyer sur WhatsApp
+      </Btn>
+
+      <div style={{display:"flex",gap:10,marginBottom:12}}>
+        <Btn v="black" full sx={{height:52,flexDirection:"column",gap:2,padding:"8px"}} onClick={handlePDF}>
+          <Ic n="doc" s={18} col="#fff"/>
+          <span style={{fontSize:13,fontWeight:700}}>Télécharger PDF</span>
+          <span style={{fontSize:10,opacity:0.6}}>Idéal pour imprimer</span>
+        </Btn>
+        <Btn v="white" full sx={{height:52,flexDirection:"column",gap:2,padding:"8px"}} onClick={handleImage}>
+          <Ic n="img" s={18} col={C.text}/>
+          <span style={{fontSize:13,fontWeight:700}}>Télécharger Image</span>
+          <span style={{fontSize:10,color:C.textSec}}>Pour la galerie</span>
+        </Btn>
+      </div>
+
+      {loading&&<div style={{textAlign:"center",fontSize:13,color:C.textSec,marginBottom:10}}>⏳ Génération en cours...</div>}
+      {dlStatus&&<div style={{background:C.greenBg,color:C.green,borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:600,marginBottom:10,textAlign:"center"}}>{dlStatus}</div>}
+      {dlErr&&<div style={{background:C.redBg,color:C.red,borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:600,marginBottom:10,textAlign:"center"}}>{dlErr}</div>}
+
+      <div style={{display:"flex",gap:10}}>
+        <Btn v="ghost" full onClick={onNew}>+ Nouveau reçu</Btn>
+        <Btn v="outline" full onClick={onHome}>Accueil</Btn>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ═══ RECEIPT DETAIL ═══ */
+function ReceiptDetail({receipt,profile,onBack,code}){
+  const [clipMsg,setCM]=useState("");
+  const [showPay,setSP]=useState(false);
+  const [payAmt,setPA]=useState("");
+  const [payMode,setPM]=useState("Cash");
+  const cur=receipt?.currency||profile?.currency||"FCFA";
+  const reste=Math.max(0,(receipt?.montantTotal||0)-(receipt?.montantPaye||0));
+
+  const waMsg=()=>{
+    let m=`Bonjour ${receipt.nomClient}, voici votre reçu N°${receipt.numero} de ${fmtN(receipt.montantPaye)} ${cur} pour ${receipt.objet}.`;
+    if(reste>0)m+=` Il reste ${fmtN(reste)} ${cur} à régler.`;
+    m+=` Merci ! — ${profile.name} | ${profile.phone}`;
+    return m;
+  };
+
+  const handleRelance=()=>{
+    const m=`Bonjour ${receipt.nomClient}, je vous rappelle qu'il reste ${fmtN(reste)} ${cur} à régler pour ${receipt.objet}. Merci d'avance ! — ${profile.name} | ${profile.phone}`;
+    navigator.clipboard.writeText(m).then(()=>{setCM("✓ Message copié — collez-le sur WhatsApp");setTimeout(()=>setCM(""),3000);}).catch(()=>setCM("Copie : "+m));
+  };
+
+  const handlePDF=()=>{
+    const zone=document.getElementById("print-receipt");
+    zone.innerHTML=buildReceiptHTML(receipt,profile);
+    zone.style.display="block";
+    setTimeout(()=>{window.print();zone.style.display="none";zone.innerHTML="";},100);
+  };
+
+  return <div style={{minHeight:"100vh",background:C.bg,paddingBottom:32}}>
+    <DarkHeader
+      left={<button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer"}}><Ic n="chev" s={22} col="#fff"/></button>}
+      center={<span style={{color:"#fff",fontSize:15,fontWeight:700}}>Détail du reçu</span>}
+    />
+    <div style={{maxWidth:600,margin:"0 auto",padding:"16px"}}>
+      <ReceiptDisplay receipt={receipt} profile={profile} webMode/>
+
+      <div style={{marginTop:14,display:"flex",gap:10}}>
+        <Btn v="green" full sx={{height:48}} onClick={()=>window.open(`https://wa.me/?text=${encode(waMsg())},"_blank")}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          WhatsApp
+        </Btn>
+        <Btn v="black" full sx={{height:48}} onClick={handlePDF}><Ic n="doc" s={16} col="#fff"/>PDF</Btn>
+      </div>
+
+      {reste>0&&<div style={{background:C.orangeLight,border:`1px solid rgba(249,115,22,0.25)`,borderRadius:14,padding:16,marginTop:14}}>
+        <p style={{fontSize:14,fontWeight:700,color:C.orange,marginBottom:12}}>Il reste {fmtN(reste)} {cur} à percevoir</p>
+        <Btn full sx={{marginBottom:8,height:44}} onClick={()=>setSP(true)}>Enregistrer un nouveau paiement</Btn>
+        <Btn v="outline" full sx={{height:44}} onClick={handleRelance}><Ic n="copy" s={14} col={C.orange}/>Relancer le client</Btn>
+        {clipMsg&&<div style={{background:C.greenBg,color:C.green,borderRadius:8,padding:"8px 12px",fontSize:13,fontWeight:600,marginTop:8,textAlign:"center"}}>{clipMsg}</div>}
+      </div>}
+    </div>
+
+    <Modal open={showPay} onClose={()=>setSP(false)} title={`Nouveau paiement — ${receipt?.nomClient}`}>
+      <p style={{fontSize:13,color:C.textSec,marginBottom:14}}>Reste actuel : <strong style={{color:C.orange}}>{fmtN(reste)} {cur}</strong></p>
+      <Fld label="Montant encaissé" value={payAmt} onChange={setPA} type="number" placeholder="0"/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+        {["Cash","Mobile Money","Virement","Chèque"].map(m=>(
+          <button key={m} onClick={()=>setPM(m)} style={{borderRadius:10,padding:"10px",border:`2px solid ${payMode===m?C.orange:C.border}`,background:payMode===m?C.orangeLight:C.white,cursor:"pointer",fontSize:13,fontWeight:payMode===m?700:500,color:payMode===m?C.orange:C.textSec}}>
+            {m}
+          </button>
+        ))}
+      </div>
+      <Btn full onClick={()=>{if(!payAmt||parseFloat(payAmt)<=0)return;setSP(false);}} sx={{height:46}}>Enregistrer</Btn>
+    </Modal>
+  </div>;
+}
+
+/* ═══ CLIENT APP ═══ */
+function ClientApp({code,clientData,onLogout,addLog,addNotif}){
+  const [tab,setTab]=useState("home");
+  const [view,setView]=useState("home");
+  const [receipts,setReceipts]=useState(()=>sto.get(`enc-receipts-${code}`,[]) );
+  const profile=sto.get(`enc-profile-${code}`,null);
+  const [currentR,setCR]=useState(null);
+  const [selectedR,setSR]=useState(null);
+  const [search,setSrch]=useState("");
+  const [filter,setFilt]=useState("all");
+
+  const cur=profile?.currency||"FCFA";
+  const moisKey=getMoisKey();
+  const totalMois=receipts.filter(r=>getMoisKey(r.createdAt)===moisKey).reduce((s,r)=>s+(r.montantPaye||0),0);
+  const countMois=receipts.filter(r=>getMoisKey(r.createdAt)===moisKey).length;
+  const totalReste=receipts.reduce((s,r)=>s+Math.max(0,(r.montantTotal||0)-(r.montantPaye||0)),0);
+  const countReste=receipts.filter(r=>Math.max(0,(r.montantTotal||0)-(r.montantPaye||0))>0).length;
+  const expSoon=clientData?.expiryDate&&(new Date(clientData.expiryDate)-new Date())<7*864e5&&(new Date(clientData.expiryDate)-new Date())>0;
+
+  const filteredR=receipts.filter(r=>{
+    if(search&&!r.nomClient.toLowerCase().includes(search.toLowerCase()))return false;
+    if(filter==="month")return getMoisKey(r.createdAt)===moisKey;
+    if(filter==="lastmonth"){const d=new Date();d.setMonth(d.getMonth()-1);return getMoisKey(r.createdAt)===getMoisKey(d.toISOString());}
+    if(filter==="pending")return Math.max(0,(r.montantTotal||0)-(r.montantPaye||0))>0;
+    return true;
+  });
+
+  if(!profile)return <ProfileSetup code={code} onDone={()=>window.location.reload()}/>;
+  if(view==="new")return <NewReceiptForm code={code} profile={profile} onDone={r=>{setCR(r);setReceipts(sto.get(`enc-receipts-${code}`,[]));addLog(`Reçu: ${r.numero} — ${r.nomClient} — ${fmtN(r.montantPaye)} ${cur}`);addNotif(`🧾 ${profile.name} → ${r.numero} · ${fmtN(r.montantPaye)} ${cur}`);setView("export");}} onBack={()=>setView("home")}/>;
+  if(view==="export")return <ExportScreen receipt={currentR} profile={profile} onNew={()=>{setCR(null);setView("new");}} onHome={()=>setView("home")}/>;
+  if(view==="detail")return <ReceiptDetail receipt={selectedR} profile={profile} onBack={()=>setView("history")} code={code}/>;
+
+  /* HOME TAB */
+  const HomeTab=()=><div style={{maxWidth:640,margin:"0 auto",padding:"16px 16px 80px"}} className="fade">
+    {/* Gradient card */}
+    <div style={{background:`linear-gradient(135deg,${C.black},${C.black2})`,borderRadius:20,padding:24,marginBottom:14,position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:-40,right:-40,width:140,height:140,borderRadius:"50%",background:"rgba(249,115,22,0.08)"}}/>
+      <div style={{position:"absolute",bottom:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(249,115,22,0.05)"}}/>
+      <div style={{color:"rgba(255,255,255,0.5)",fontSize:11,textTransform:"uppercase",letterSpacing:"1px",fontWeight:700,marginBottom:4}}>Encaissé en {getMois()}</div>
+      <div style={{color:"#fff",fontSize:40,fontWeight:800,fontFamily:"'Sora',sans-serif",letterSpacing:"-1.5px",lineHeight:1}}>{fmtN(totalMois)} <span style={{fontSize:18,fontWeight:600,opacity:0.6}}>{cur}</span></div>
+      <div style={{color:"rgba(255,255,255,0.4)",fontSize:12,marginTop:6}}>{countMois} reçu{countMois>1?"s":""} émis ce mois</div>
+    </div>
+
+    {/* Restes card */}
+    {totalReste>0
+      ?<div style={{background:C.white,borderLeft:`4px solid ${C.orange}`,borderRadius:16,border:`1px solid ${C.border}`,padding:16,marginBottom:14,boxShadow:C.shadow}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+          <Ic n="clock" s={16} col={C.orange}/>
+          <span style={{fontSize:13,color:C.textSec,fontWeight:500}}>Paiements en attente</span>
+        </div>
+        <div style={{fontSize:24,fontWeight:800,color:C.orange,fontFamily:"'Sora',sans-serif"}}>{fmtN(totalReste)} {cur}</div>
+        <div style={{fontSize:12,color:C.textSec,marginTop:2}}>{countReste} client{countReste>1?"s":""} n'ont pas encore tout payé</div>
+      </div>
+      : receipts.length>0&&<div style={{background:C.greenBg,borderLeft:`4px solid ${C.green}`,borderRadius:16,border:`1px solid ${C.greenBd}`,padding:16,marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+        <Ic n="check" s={16} col={C.green}/>
+        <span style={{fontSize:14,fontWeight:700,color:C.green}}>Tous les paiements sont à jour ✓</span>
+      </div>
+    }
+
+    {/* Main CTA */}
+    <Btn full sx={{height:62,marginBottom:20,borderRadius:16,fontSize:17}} onClick={()=>setView("new")}>
+      <Ic n="plus" s={22} col="#fff"/>Nouveau reçu
+    </Btn>
+
+    {/* Last receipts */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <span style={{fontSize:15,fontWeight:700,color:C.text}}>Derniers reçus</span>
+      <button onClick={()=>setTab("history")} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:C.orange,fontWeight:700}}>Voir tout →</button>
+    </div>
+
+    {receipts.length===0
+      ?<div style={{textAlign:"center",padding:"40px 20px",background:C.white,borderRadius:16,border:`1px solid ${C.border}`}}>
+        <Ic n="doc" s={48} col="#E4E4E7" sx={{marginBottom:12}}/>
+        <p style={{fontSize:14,color:C.textSec}}>Aucun reçu pour l'instant.</p>
+        <p style={{fontSize:12,color:C.textSec,marginTop:4}}>Appuyez sur le bouton orange pour créer votre premier reçu.</p>
+      </div>
+      : receipts.slice(0,4).map((r,i)=>{
+        const rr=Math.max(0,(r.montantTotal||0)-(r.montantPaye||0));
+        return <div key={r.id} onClick={()=>{setSR(r);setView("detail");}} style={{display:"flex",alignItems:"center",padding:"14px 14px",borderRadius:14,marginBottom:8,background:C.white,border:`1px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow,transition:"transform 0.15s"}}>
+          <div style={{width:40,height:40,borderRadius:10,background:C.orangeLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <Ic n="doc" s={18} col={C.orange}/>
+          </div>
+          <div style={{flex:1,margin:"0 12px"}}>
+            <div style={{fontSize:14,fontWeight:700,color:C.text}}>{r.nomClient}</div>
+            <div style={{fontSize:12,color:C.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.objet}</div>
+            <div style={{fontSize:10,color:"#A1A1AA",marginTop:1}}>{r.numero} · {fmtD(r.createdAt)}</div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div style={{fontSize:14,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif"}}>{fmtN(r.montantPaye)}</div>
+            <div style={{fontSize:10,color:C.textSec,marginBottom:2}}>{r.currency||cur}</div>
+            {rr>0?<span style={{fontSize:10,fontWeight:700,background:C.orangeLight,color:C.orange,padding:"2px 7px",borderRadius:10}}>Reste {fmtN(rr)}</span>
+              :<span style={{fontSize:10,fontWeight:700,background:C.greenBg,color:C.green,padding:"2px 7px",borderRadius:10}}>Soldé ✓</span>}
+          </div>
+        </div>;
+      })
+    }
+  </div>;
+
+  /* HISTORY TAB */
+  const HistoryTab=()=><div style={{maxWidth:640,margin:"0 auto",padding:"16px 16px 80px"}} className="fade">
+    <div style={{position:"relative",marginBottom:12}}>
+      <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)"}}><Ic n="search" s={16} col={C.textSec}/></div>
+      <input value={search} onChange={e=>setSrch(e.target.value)} placeholder="Rechercher par nom de client..."
+        style={{width:"100%",padding:"11px 12px 11px 36px",border:`1.5px solid ${C.border}`,borderRadius:12,fontSize:14,background:C.white}}/>
+    </div>
+    <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,marginBottom:14}}>
+      {[["all","Tous"],["month","Ce mois"],["lastmonth","Mois dernier"],["pending","En attente"]].map(([k,l])=>(
+        <button key={k} onClick={()=>setFilt(k)} style={{whiteSpace:"nowrap",padding:"7px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,fontWeight:filter===k?700:500,background:filter===k?C.orange:C.white,color:filter===k?"#fff":C.textSec,border:`1px solid ${filter===k?C.orange:C.border}`,transition:"all 0.15s"}}>
+          {l}
+        </button>
+      ))}
+    </div>
+    {filteredR.length===0
+      ?<div style={{textAlign:"center",padding:"40px",color:C.textSec,fontSize:14}}>Aucun reçu trouvé.</div>
+      :filteredR.map((r,i)=>{
+        const rr=Math.max(0,(r.montantTotal||0)-(r.montantPaye||0));
+        return <div key={r.id} onClick={()=>{setSR(r);setView("detail");}} style={{display:"flex",alignItems:"center",padding:"13px 14px",borderRadius:14,marginBottom:8,background:C.white,border:`1px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}>
+          <div style={{width:38,height:38,borderRadius:10,background:C.orangeLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <Ic n="doc" s={17} col={C.orange}/>
+          </div>
+          <div style={{flex:1,margin:"0 12px"}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text}}>{r.nomClient}</div>
+            <div style={{fontSize:11,color:C.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.objet}</div>
+            <div style={{fontSize:10,color:"#A1A1AA",marginTop:1}}>{r.numero} · {fmtD(r.createdAt)}</div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div style={{fontSize:13,fontWeight:800,color:C.text}}>{fmtN(r.montantPaye)} {r.currency||cur}</div>
+            {rr>0?<div style={{fontSize:10,fontWeight:700,background:C.orangeLight,color:C.orange,padding:"2px 7px",borderRadius:10,marginTop:3}}>Reste {fmtN(rr)}</div>
+              :<div style={{fontSize:10,fontWeight:700,background:C.greenBg,color:C.green,padding:"2px 7px",borderRadius:10,marginTop:3}}>Soldé ✓</div>}
+          </div>
+        </div>;
+      })
+    }
+  </div>;
+
+  /* SETTINGS TAB */
+  const SettingsTab=()=>{
+    const [pn,setPn]=useState(profile?.name||"");
+    const [pp,setPp]=useState(profile?.phone||"");
+    const [pc,setPc]=useState(profile?.country||COUNTRIES[0].n);
+    const [pcu,setPcu]=useState(profile?.currency||"FCFA");
+    const [saved,setSaved]=useState(false);
+    const saveProfile=()=>{sto.set(`enc-profile-${code}`,{name:pn,phone:pp,country:pc,currency:pcu});setSaved(true);setTimeout(()=>setSaved(false),2500);};
+    return <div style={{maxWidth:560,margin:"0 auto",padding:"20px 16px 80px"}} className="fade">
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.textSec,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:14}}>Mon profil</div>
+        <Fld label="Nom boutique ou votre nom" value={pn} onChange={setPn} placeholder="Ex: Boutique Aminata"/>
+        <Fld label="Numéro de téléphone" value={pp} onChange={setPp} placeholder="+225 07 00 00 00" type="tel"/>
+        <Fld label="Pays" as="select" value={pc} onChange={v=>{setPc(v);const co=COUNTRIES.find(x=>x.n===v);if(co)setPcu(co.c);}}>
+          {COUNTRIES.map(co=><option key={co.n} value={co.n}>{co.f} {co.n}</option>)}
+        </Fld>
+        <Fld label="Devise" as="select" value={pcu} onChange={setPcu}>
+          {[...new Map(COUNTRIES.map(co=>[co.c,co])).values()].map(co=><option key={co.c} value={co.c}>{co.c}</option>)}
+        </Fld>
+        {saved&&<div style={{background:C.greenBg,color:C.green,borderRadius:10,padding:"9px 14px",fontSize:13,fontWeight:700,marginBottom:10,textAlign:"center"}}>✓ Profil enregistré</div>}
+        <Btn full onClick={saveProfile} sx={{marginBottom:24,height:48}}>Enregistrer les modifications</Btn>
+      </div>
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.textSec,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:14}}>Mon abonnement</div>
+        <Card style={{padding:16}}>
+          <PlanBadge plan={clientData?.plan}/>
+          {clientData?.expiryDate&&<p style={{fontSize:12,color:C.textSec,marginTop:8}}>Expire le {fmtD(clientData.expiryDate)}</p>}
+          <div style={{background:C.bg,borderRadius:10,padding:"10px 12px",marginTop:10,fontSize:13,color:C.textSec,lineHeight:1.6}}>Pour renouveler ou changer de plan, contactez votre prestataire Encaivo.</div>
+        </Card>
+      </div>
+      <Btn v="danger" full sx={{height:46}} onClick={()=>{sto.del("enc-active-code");sto.del("enc-active-role");sto.del(`enc-session-${code}`);window.location.reload();}}>
+        <Ic n="out" s={16} col={C.red}/> Se déconnecter
+      </Btn>
+    </div>;
+  };
+
+  return <div style={{minHeight:"100vh",background:C.bg,paddingBottom:66}}>
+    <DarkHeader
+      left={<Logo inv size={0.85}/>}
+      center={<span style={{color:"#fff",fontSize:14,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{profile.name}</span>}
+      right={<button onClick={()=>setTab("settings")} style={{background:"none",border:"none",cursor:"pointer"}}><Ic n="cog" s={20} col="#fff"/></button>}
+    />
+    {expSoon&&<div style={{background:C.orangeLight,borderBottom:`1px solid rgba(249,115,22,0.2)`,padding:"9px 16px",textAlign:"center",fontSize:13,color:C.orangeDark,fontWeight:700}}>⚠ Votre accès expire dans moins de 7 jours. Contactez votre prestataire.</div>}
+    {tab==="home"&&<HomeTab/>}
+    {tab==="history"&&<HistoryTab/>}
+    {tab==="settings"&&<SettingsTab/>}
+    <BottomNav tab={tab} setTab={setTab}/>
+  </div>;
+}
+
+/* ═══ CODE MODAL ═══ */
+function CodeModal({open,onClose,onSave,editing}){
+  const [code,setCode]=useState("");
+  const [name,setName]=useState("");
+  const [plan,setPlan]=useState("Complet");
+  const [expiry,setExpiry]=useState(new Date(Date.now()+7*864e5).toISOString().split("T")[0]);
+  const [msg,setMsg]=useState("Votre abonnement a expiré. Contactez votre prestataire pour renouveler.");
+
+  useEffect(()=>{
+    if(editing){setCode(editing.code);setName(editing.clientName);setPlan(editing.plan);setExpiry(editing.expiryDate||"");setMsg(editing.expiryMsg||"");}
+    else{setCode("");setName("");setPlan("Complet");setExpiry(new Date(Date.now()+7*864e5).toISOString().split("T")[0]);setMsg("Votre abonnement a expiré. Contactez votre prestataire pour renouveler.");}
+  },[editing,open]);
+
+  const handle=()=>{
+    if(!code.trim()||!name.trim())return;
+    onSave({code:code.trim().toUpperCase(),clientName:name.trim(),plan,expiryDate:plan==="VIP"?null:(expiry||null),expiryMsg:msg});
+    onClose();
+  };
+  const p=PLANS[plan]||PLANS.Complet;
+
+  return <Modal open={open} onClose={onClose} title={editing?"Modifier le code":"Nouveau code d'accès"}>
+    <Fld label="Code d'accès" value={code} onChange={v=>setCode(v.toUpperCase())} placeholder="COM001" hint="Le client entrera ce code pour accéder à son espace."/>
+    <Fld label="Nom du client" value={name} onChange={setName} placeholder="Boutique Koné"/>
+    <Fld label="Plan" as="select" value={plan} onChange={setPlan}>
+      {Object.entries(PLANS).map(([k,v])=><option key={k} value={k}>{v.label} — {v.price}</option>)}
+    </Fld>
+    <div style={{padding:"10px 12px",borderRadius:10,background:p.bg,border:`1px solid ${p.bd}`,fontSize:13,color:p.color,fontWeight:600,marginBottom:14}}>{p.label} · {p.price}</div>
+    {plan!=="VIP"
+      ?<Fld label={plan==="Essai"?"Date d'expiration (7 jours suggérés)":"Date d'expiration"} value={expiry} onChange={setExpiry} type="date" hint="Le code se désactive automatiquement à cette date."/>
+      :<div style={{background:C.orangeLight,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:12,color:C.orangeDark,fontWeight:500}}>💎 Les codes VIP n'expirent jamais automatiquement.</div>
+    }
+    <Fld label="Message si expiré ou désactivé" as="textarea" value={msg} onChange={setMsg} rows={2}/>
+    <div style={{display:"flex",gap:10,marginTop:8}}>
+      <Btn v="ghost" onClick={onClose} full>Annuler</Btn>
+      <Btn onClick={handle} full disabled={!code.trim()||!name.trim()}>{editing?"Enregistrer":"Créer le code"}</Btn>
+    </div>
+  </Modal>;
+}
+
+/* ═══ SUBADMIN MODAL ═══ */
+function SAModal({open,onClose,onSave,editing,count}){
+  const [code,setCode]=useState("");
+  const [name,setName]=useState("");
+  const [perms,setPerms]=useState({create:true,edit:true,disable:true,history:true,dashboard:true});
+  useEffect(()=>{
+    if(editing){setCode(editing.code);setName(editing.name);setPerms(editing.perms||{create:true,edit:true,disable:true,history:true,dashboard:true});}
+    else{setCode("");setName("");setPerms({create:true,edit:true,disable:true,history:true,dashboard:true});}
+  },[editing,open]);
+  const PL={create:"Créer des codes",edit:"Modifier des codes",disable:"Activer / Désactiver",history:"Voir l'historique",dashboard:"Tableau de bord"};
+  const handle=()=>{if(!code.trim()||!name.trim())return;onSave({code:code.trim().toUpperCase(),name:name.trim(),perms,active:true,id:editing?.id||uid(),createdAt:editing?.createdAt||nowISO()});onClose();};
+  return <Modal open={open} onClose={onClose} title={editing?"Modifier le Sous-Admin":"Créer un Sous-Admin"}>
+    {!editing&&count>=2&&<div style={{background:C.redBg,color:C.red,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,fontWeight:600}}>⚠ Maximum 2 Sous-Admins atteint.</div>}
+    <Fld label="Code d'accès" value={code} onChange={v=>setCode(v.toUpperCase())} placeholder="SOUS-A"/>
+    <Fld label="Nom" value={name} onChange={setName} placeholder="Collaborateur A"/>
+    <div style={{marginBottom:14}}>
+      <label style={{display:"block",fontSize:11,fontWeight:700,color:C.text,textTransform:"uppercase",letterSpacing:"0.7px",marginBottom:10}}>Permissions</label>
+      {Object.entries(PL).map(([k,l])=>(
+        <div key={k} onClick={()=>setPerms(p=>({...p,[k]:!p[k]}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 12px",borderRadius:10,marginBottom:6,cursor:"pointer",border:`1.5px solid ${perms[k]?C.greenBd:C.border}`,background:perms[k]?C.greenBg:C.bg,transition:"all 0.15s"}}>
+          <span style={{fontSize:13,fontWeight:600,color:perms[k]?C.green:C.textSec}}>{l}</span>
+          <span style={{fontSize:16}}>{perms[k]?"✅":"⬜"}</span>
+        </div>
+      ))}
+    </div>
+    <div style={{display:"flex",gap:10}}>
+      <Btn v="ghost" onClick={onClose} full>Annuler</Btn>
+      <Btn onClick={handle} full disabled={!code.trim()||!name.trim()||(!editing&&count>=2)}>{editing?"Enregistrer":"Créer"}</Btn>
+    </div>
+  </Modal>;
+}
+
+/* ═══ ADMIN PANEL ═══ */
+function AdminPanel({isSA,saData,clients,setClients,subAdmins,setSubAdmins,logs,addLog,notifs,clearNotifs,onLogout,onPreview}){
+  const [tab,setTab]=useState("dashboard");
+  const [cm,setCm]=useState(false);
+  const [ec,setEc]=useState(null);
+  const [sm,setSm]=useState(false);
+  const [esa,setEsa]=useState(null);
+  const [hm,setHm]=useState(null);
+  const [search,setSrc]=useState("");
+  const P=saData?.perms||{create:true,edit:true,disable:true,history:true,dashboard:true};
+
+  const saveC=u=>{setClients(u);sto.set("enc-clients",u);};
+  const saveSA=u=>{setSubAdmins(u);sto.set("enc-subadmins",u);};
+
+  const createCode=d=>{if(clients.find(c=>c.code===d.code)){alert("Ce code existe déjà.");return;}saveC([...clients,{...d,id:uid(),active:true,createdAt:nowISO(),lastLogin:null,sessionId:null}]);addLog(`Code créé: ${d.code} — ${d.clientName} (${d.plan})`);};
+  const updateCode=d=>{saveC(clients.map(c=>c.id===ec.id?{...c,...d}:c));addLog(`Code modifié: ${d.code}`);setEc(null);};
+  const toggleCode=id=>{const c=clients.find(x=>x.id===id);saveC(clients.map(x=>x.id===id?{...x,active:!x.active}:x));addLog(`Code ${c.active?"désactivé":"activé"}: ${c.code}`);};
+  const deleteCode=id=>{const c=clients.find(x=>x.id===id);if(window.confirm(`Supprimer ${c.code}?`)){saveC(clients.filter(x=>x.id!==id));addLog(`Code supprimé: ${c.code}`);}};
+  const transformPlan=(id,plan)=>{const c=clients.find(x=>x.id===id);saveC(clients.map(x=>x.id===id?{...x,plan,expiryDate:plan==="VIP"?null:x.expiryDate}:x));addLog(`Plan: ${c.code} → ${plan}`);};
+  const resetSession=id=>{const c=clients.find(x=>x.id===id);saveC(clients.map(x=>x.id===id?{...x,sessionId:null}:x));sto.del(`enc-session-${c.code}`);addLog(`Session réinitialisée: ${c.code}`);};
+  const createSA=d=>{saveSA([...subAdmins,d]);addLog(`Sous-Admin créé: ${d.code}`);};
+  const updateSA=d=>{saveSA(subAdmins.map(s=>s.id===esa.id?{...s,...d}:s));addLog(`Sous-Admin modifié: ${d.code}`);setEsa(null);};
+  const toggleSA=id=>{const s=subAdmins.find(x=>x.id===id);saveSA(subAdmins.map(x=>x.id===id?{...x,active:!x.active}:x));addLog(`Sous-Admin ${s.active?"désactivé":"activé"}: ${s.code}`);};
+  const deleteSA=id=>{const s=subAdmins.find(x=>x.id===id);if(window.confirm(`Supprimer ${s.code}?`)){saveSA(subAdmins.filter(x=>x.id!==id));addLog(`Sous-Admin supprimé: ${s.code}`);}};
+
+  const filtered=clients.filter(c=>c.clientName.toLowerCase().includes(search.toLowerCase())||c.code.toLowerCase().includes(search.toLowerCase()));
+  const stats={total:clients.length,active:clients.filter(c=>c.active&&!isExp(c)).length,expired:clients.filter(c=>isExp(c)).length,session:clients.filter(c=>c.sessionId).length};
+  const tabs=[{id:"dashboard",icon:"trend",label:"Dashboard"},{id:"codes",icon:"shield",label:"Codes"},{id:"logs",icon:"list",label:"Journal"},{id:"admins",icon:"users",label:"Sous-Admins"}].filter(t=>t.id!=="logs"||isSA).filter(t=>t.id!=="admins"||isSA);
+
+  return <div style={{minHeight:"100vh",background:C.bg}}>
+    <div style={{background:C.black,height:60,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <Logo inv size={0.85}/>
+        <span style={{background:C.orange,color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6,letterSpacing:"1px"}}>{isSA?"SUPER ADMIN":"SOUS-ADMIN"}</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+        {notifs.length>0&&<button onClick={clearNotifs} style={{position:"relative",background:"rgba(255,255,255,0.08)",border:"none",borderRadius:8,padding:"7px 10px",cursor:"pointer"}}>
+          <Ic n="bell" s={18} col="#fff"/>
+          <span style={{position:"absolute",top:-2,right:-2,background:C.red,color:"#fff",fontSize:9,fontWeight:700,width:15,height:15,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>{Math.min(notifs.length,9)}</span>
+        </button>}
+        {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{background:tab===t.id?C.orange:"rgba(255,255,255,0.07)",border:"none",borderRadius:8,padding:"7px 10px",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}><Ic n={t.icon} s={14} col="#fff"/>{t.label}</button>)}
+        <button onClick={onLogout} style={{background:"rgba(255,255,255,0.05)",border:"none",borderRadius:8,padding:"7px 10px",cursor:"pointer"}}><Ic n="out" s={16} col="rgba(255,255,255,0.45)"/></button>
+      </div>
+    </div>
+
+    <div style={{maxWidth:960,margin:"0 auto",padding:"20px 16px"}}>
+      {notifs.length>0&&<div style={{background:C.orangeLight,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`1px solid rgba(249,115,22,0.2)`}}>
+        <p style={{fontSize:11,fontWeight:700,color:C.orange,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>Activité récente</p>
+        {notifs.slice(0,3).map((n,i)=><p key={i} style={{fontSize:13,color:C.orangeDark,marginBottom:3}}>• {n.msg}</p>)}
+      </div>}
+
+      {/* DASHBOARD */}
+      {tab==="dashboard"&&P.dashboard&&<div className="fade">
+        <h2 style={{fontSize:22,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif",marginBottom:4}}>Tableau de bord</h2>
+        <p style={{fontSize:13,color:C.textSec,marginBottom:20}}>Vue d'ensemble de votre activité Encaivo</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+          {[{l:"Total",v:stats.total,c:C.text},{l:"Actifs",v:stats.active,c:C.green},{l:"Expirés",v:stats.expired,c:C.amber},{l:"En session",v:stats.session,c:C.orange}].map((s,i)=>(
+            <Card key={i}><div style={{padding:16,textAlign:"center"}}>
+              <div style={{fontSize:28,fontWeight:800,color:s.c,fontFamily:"'Sora',sans-serif"}}>{s.v}</div>
+              <div style={{fontSize:11,color:C.textSec,marginTop:2}}>{s.l}</div>
+            </div></Card>
+          ))}
+        </div>
+        <Card>
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,fontWeight:700,fontSize:14,color:C.text}}>Clients</div>
+          {clients.map((c,i)=>{
+            const exp=isExp(c);
+            return <div key={c.id} style={{padding:"12px 16px",borderBottom:i<clients.length-1?`1px solid ${C.border}`:"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:130}}>
+                <div style={{fontSize:14,fontWeight:700,color:C.text}}>{c.clientName}</div>
+                <div style={{fontSize:11,color:C.textSec,fontFamily:"monospace",fontWeight:600,letterSpacing:"1px"}}>{c.code}</div>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                <PlanBadge plan={c.plan} sm/><StatusPill active={c.active} exp={exp}/>
+                {c.sessionId&&<span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,background:C.greenBg,color:C.green}}>● Session</span>}
+              </div>
+              <div style={{fontSize:11,color:C.textSec,textAlign:"right",minWidth:80}}>
+                <div>Dernière cnx</div><strong style={{color:C.text,fontSize:12}}>{c.lastLogin?fmtD(c.lastLogin):"Jamais"}</strong>
+              </div>
+              <div style={{display:"flex",gap:5}}>
+                {P.history&&<Btn v="ghost" sm onClick={()=>{const d=sto.get(`enc-receipts-${c.code}`,[]);setHm({client:c,docs:d});}}>📂</Btn>}
+                <Btn v="ghost" sm onClick={()=>onPreview(c)}>👁</Btn>
+              </div>
+            </div>;
+          })}
+          {!clients.length&&<div style={{padding:"32px",textAlign:"center",color:C.textSec,fontSize:14}}>Aucun client.</div>}
+        </Card>
+      </div>}
+
+      {/* CODES */}
+      {tab==="codes"&&<div className="fade">
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
+          <h2 style={{fontSize:22,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif"}}>Codes clients</h2>
+          {P.create&&<Btn onClick={()=>{setEc(null);setCm(true);}}>➕ Nouveau code</Btn>}
+        </div>
+        <div style={{position:"relative",marginBottom:14}}>
+          <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)"}}><Ic n="search" s={15} col={C.textSec}/></div>
+          <input value={search} onChange={e=>setSrc(e.target.value)} placeholder="Rechercher..." style={{width:"100%",padding:"11px 12px 11px 36px",border:`1.5px solid ${C.border}`,borderRadius:12,fontSize:14,background:C.white}}/>
+        </div>
+        <Card>
+          {!filtered.length&&<div style={{padding:"32px",textAlign:"center",color:C.textSec,fontSize:14}}>Aucun résultat.</div>}
+          {filtered.map((c,i)=>{
+            const exp=isExp(c);
+            return <div key={c.id} style={{padding:"14px 16px",borderBottom:i<filtered.length-1?`1px solid ${C.border}`:"none"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+                <div style={{fontFamily:"monospace",fontSize:13,fontWeight:800,color:C.text,background:C.bg,padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,letterSpacing:"2px",flexShrink:0}}>{c.code}</div>
+                <div style={{flex:1,minWidth:140}}>
+                  <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{c.clientName}</div>
+                  <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+                    <PlanBadge plan={c.plan} sm/><StatusPill active={c.active} exp={exp}/>
+                    {c.sessionId&&<span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,background:C.greenBg,color:C.green}}>● Session</span>}
+                    {c.expiryDate&&<span style={{fontSize:11,color:C.textSec}}>Expire: {fmtD(c.expiryDate)}</span>}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",flexShrink:0}}>
+                  <Btn v="ghost" sm onClick={()=>onPreview(c)}>👁</Btn>
+                  {P.history&&<Btn v="ghost" sm onClick={()=>{const d=sto.get(`enc-receipts-${c.code}`,[]);setHm({client:c,docs:d});}}>📂</Btn>}
+                  {isSA&&c.sessionId&&<Btn v="ghost" sm onClick={()=>resetSession(c.id)}><Ic n="refresh" s={12} col={C.textSec}/>Session</Btn>}
+                  {isSA&&<select onChange={e=>{if(e.target.value){transformPlan(c.id,e.target.value);e.target.value=""}}} defaultValue="" style={{padding:"6px 8px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:12,background:C.bg,cursor:"pointer"}}>
+                    <option value="">⬆ Plan</option>
+                    {Object.keys(PLANS).filter(p=>p!==c.plan).map(p=><option key={p} value={p}>→ {p}</option>)}
+                  </select>}
+                  {P.edit&&<Btn v="ghost" sm onClick={()=>{setEc(c);setCm(true);}}><Ic n="edit" s={12} col={C.textSec}/></Btn>}
+                  {P.disable&&<Btn v={c.active?"danger":"success"} sm onClick={()=>toggleCode(c.id)}>{c.active?"Désactiver":"Activer"}</Btn>}
+                  {isSA&&<Btn v="danger" sm onClick={()=>deleteCode(c.id)}><Ic n="trash" s={12} col={C.red}/></Btn>}
+                </div>
+              </div>
+            </div>;
+          })}
+        </Card>
+      </div>}
+
+      {/* JOURNAL */}
+      {tab==="logs"&&isSA&&<div className="fade">
+        <h2 style={{fontSize:22,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif",marginBottom:4}}>Journal d'activité</h2>
+        <p style={{fontSize:13,color:C.textSec,marginBottom:20}}>Toutes les actions réalisées dans Encaivo</p>
+        <Card>
+          {!logs.length&&<div style={{padding:"32px",textAlign:"center",color:C.textSec,fontSize:14}}>Aucune activité.</div>}
+          {logs.map((l,i)=><div key={i} style={{padding:"11px 16px",borderBottom:i<logs.length-1?`1px solid ${C.border}`:"none",display:"flex",gap:10,alignItems:"flex-start"}}>
+            <div style={{width:7,height:7,borderRadius:"50%",background:C.orange,flexShrink:0,marginTop:5}}/>
+            <div>
+              <p style={{fontSize:13,color:C.text,fontWeight:500}}>{l.msg}</p>
+              <p style={{fontSize:11,color:C.textSec,marginTop:1}}>{fmtD(l.at)} {l.at?new Date(l.at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):""}</p>
+            </div>
+          </div>)}
+        </Card>
+      </div>}
+
+      {/* ADMINS */}
+      {tab==="admins"&&isSA&&<div className="fade">
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
+          <h2 style={{fontSize:22,fontWeight:800,color:C.text,fontFamily:"'Sora',sans-serif"}}>Sous-Admins</h2>
+          <Btn onClick={()=>{setEsa(null);setSm(true);}} disabled={subAdmins.length>=2}>➕ Nouveau</Btn>
+        </div>
+        <div style={{background:C.orangeLight,borderRadius:12,padding:"12px 14px",marginBottom:16,border:`1px solid rgba(249,115,22,0.2)`,display:"flex",gap:10,alignItems:"center"}}>
+          <Ic n="shield" s={18} col={C.orange}/>
+          <div>
+            <p style={{fontSize:11,fontWeight:700,color:C.orange,marginBottom:2}}>Votre code Super Admin</p>
+            <p style={{fontFamily:"monospace",fontSize:14,fontWeight:800,color:C.text,letterSpacing:"2px"}}>{SUPER_CODE}</p>
+          </div>
+        </div>
+        <Card>
+          {!subAdmins.length&&<div style={{padding:"32px",textAlign:"center",color:C.textSec,fontSize:14}}>Aucun Sous-Admin. Maximum 2.</div>}
+          {subAdmins.map((s,i)=><div key={s.id} style={{padding:"14px 16px",borderBottom:i<subAdmins.length-1?`1px solid ${C.border}`:"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <div style={{fontFamily:"monospace",fontSize:13,fontWeight:800,color:C.text,background:C.bg,padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,letterSpacing:"2px"}}>{s.code}</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{s.name}</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {Object.entries(s.perms||{}).filter(([,v])=>v).map(([k])=><span key={k} style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:10,background:C.greenBg,color:C.green}}>{k}</span>)}
+              </div>
+            </div>
+            <StatusPill active={s.active} exp={false}/>
+            <div style={{display:"flex",gap:5}}>
+              <Btn v="ghost" sm onClick={()=>{setEsa(s);setSm(true);}}><Ic n="edit" s={12} col={C.textSec}/></Btn>
+              <Btn v={s.active?"danger":"success"} sm onClick={()=>toggleSA(s.id)}>{s.active?"Désactiver":"Activer"}</Btn>
+              <Btn v="danger" sm onClick={()=>deleteSA(s.id)}><Ic n="trash" s={12} col={C.red}/></Btn>
+            </div>
+          </div>)}
+        </Card>
+      </div>}
+    </div>
+
+    <CodeModal open={cm} onClose={()=>{setCm(false);setEc(null);}} onSave={ec?updateCode:createCode} editing={ec}/>
+    <SAModal open={sm} onClose={()=>{setSm(false);setEsa(null);}} onSave={esa?updateSA:createSA} editing={esa} count={subAdmins.length}/>
+    <Modal open={!!hm} onClose={()=>setHm(null)} title={`Historique — ${hm?.client?.clientName}`} wide>
+      {hm&&(!hm.docs.length
+        ?<div style={{textAlign:"center",padding:"32px",color:C.textSec}}>Aucun reçu créé.</div>
+        :<div>
+          <p style={{fontSize:13,color:C.textSec,marginBottom:14}}><PlanBadge plan={hm.client.plan} sm/> · {hm.docs.length} reçu(s)</p>
+          {hm.docs.map((d,i)=><div key={d.id||i} style={{padding:"10px 12px",background:C.bg,borderRadius:10,marginBottom:6,display:"flex",alignItems:"center",gap:10,border:`1px solid ${C.border}`}}>
+            <Ic n="doc" s={16} col={C.orange}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.text}}>{d.numero} · {d.nomClient}</div>
+              <div style={{fontSize:11,color:C.textSec}}>{d.objet} · {fmtD(d.createdAt)}</div>
+            </div>
+            <div style={{fontSize:13,fontWeight:800,color:C.orange,fontFamily:"'Sora',sans-serif"}}>{fmtN(d.montantPaye)} {d.currency||"FCFA"}</div>
+          </div>)}
+        </div>
+      )}
+    </Modal>
+  </div>;
+}
+
+/* ═══ ROOT ═══ */
+function App(){
+  const [view,setView]=useState("loading");
+  const [userData,setUD]=useState(null);
+  const [activeCode,setAC]=useState(null);
+  const [clients,setClients]=useState([]);
+  const [subAdmins,setSA]=useState([]);
+  const [logs,setLogs]=useState([]);
+  const [notifs,setNotifs]=useState([]);
+  const [fails,setFails]=useState(0);
+  const [preview,setPreview]=useState(null);
+
+  useEffect(()=>{
+    const stored=sto.get("enc-clients",null);
+    const c=stored&&stored.length?stored:SEED;
+    if(!stored||!stored.length)sto.set("enc-clients",SEED);
+    setClients(c);
+    setSA(sto.get("enc-subadmins",[]));
+    setLogs(sto.get("enc-logs",[]));
+
+    const code=sto.get("enc-active-code","");
+    const role=sto.get("enc-active-role","");
+    if(code&&role){
+      if(role==="superadmin"){setView("superadmin");setAC(code);}
+      else{
+        const allC=sto.get("enc-clients",SEED);
+        const allSA=sto.get("enc-subadmins",[]);
+        if(role==="client"){
+          const cl=allC.find(x=>x.code===code);
+          if(cl&&cl.active&&!isExp(cl)){setUD(cl);setAC(code);setView("client");}
+          else setView("login");
+        }else if(role==="subadmin"){
+          const sa=allSA.find(x=>x.code===code);
+          if(sa&&sa.active){setUD(sa);setAC(code);setView("subadmin");}
+          else setView("login");
+        }else setView("login");
+      }
+    }else setView("login");
+
+    const t=setInterval(()=>{
+      const cur=sto.get("enc-clients",[]);
+      const upd=cur.map(c=>isExp(c)&&c.active?{...c,active:false}:c);
+      if(JSON.stringify(upd)!==JSON.stringify(cur)){setClients(upd);sto.set("enc-clients",upd);}
+      setFails(f=>f>0?Math.max(0,f-1):0);
+    },60000);
+    return()=>clearInterval(t);
+  },[]);
+
+  const addLog=useCallback(msg=>{
+    const e={msg,at:nowISO(),id:uid()};
+    const upd=[e,...sto.get("enc-logs",[])].slice(0,500);
+    setLogs(upd);sto.set("enc-logs",upd);
+  },[]);
+
+  const addNotif=useCallback(msg=>{setNotifs(ns=>[{msg,at:nowISO()},...ns].slice(0,20));},[]);
+
+  const handleLogin=(role,data,code)=>{
+    const sid=uid();
+    if(role==="client"){
+      sto.set(`enc-session-${code}`,sid);
+      const upd=clients.map(c=>c.code===code?{...c,lastLogin:nowISO(),sessionId:sid}:c);
+      setClients(upd);sto.set("enc-clients",upd);
+      addLog(`Connexion: ${data.clientName} (${code})`);
+      addNotif(`👤 ${data.clientName} vient de se connecter`);
+      data={...data,sessionId:sid};
+    }else if(role==="subadmin"){addLog(`Connexion Sous-Admin: ${code}`);}
+    else{addLog("Connexion Super Admin");}
+    sto.set("enc-active-code",role==="superadmin"?SUPER_CODE:(code||""));
+    sto.set("enc-active-role",role);
+    setUD(data);setAC(code);setView(role);
+  };
+
+  const handleLogout=()=>{
+    if(activeCode&&view==="client"){
+      const upd=clients.map(c=>c.code===activeCode?{...c,sessionId:null}:c);
+      setClients(upd);sto.set("enc-clients",upd);
+      sto.del(`enc-session-${activeCode}`);
+      addLog(`Déconnexion: ${userData?.clientName||activeCode}`);
+    }
+    sto.del("enc-active-code");sto.del("enc-active-role");
+    setUD(null);setAC(null);setView("login");setPreview(null);
+  };
+
+  if(view==="loading")return(
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center"}}>
+        <Logo size={1.2}/>
+        <div style={{marginTop:20,display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:13,color:C.textSec}}>
+          <div style={{width:16,height:16,border:`2px solid ${C.border}`,borderTopColor:C.orange,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+          Chargement...
+        </div>
+      </div>
+    </div>
+  );
+
+  if(preview)return(
+    <div>
+      <div style={{background:C.orange,padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+        <span style={{fontWeight:700,fontSize:13,color:"#fff"}}>👁 Aperçu — {preview.clientName} ({preview.plan})</span>
+        <Btn v="ghost" sm onClick={()=>setPreview(null)}>✕ Quitter</Btn>
+      </div>
+      <ClientApp code={preview.code} clientData={preview} onLogout={()=>setPreview(null)} addLog={addLog} addNotif={addNotif}/>
+    </div>
+  );
+
+  if(view==="login")return <LoginScreen clients={clients} subAdmins={subAdmins} onLogin={handleLogin} fails={fails} onFail={()=>setFails(f=>{const n=f+1;if(n>=3)addNotif("🚨 3 tentatives échouées");return n;})}/>;
+  if(view==="client")return <ClientApp code={activeCode} clientData={userData} onLogout={handleLogout} addLog={addLog} addNotif={addNotif}/>;
+  if(view==="superadmin"||view==="subadmin")return(
+    <AdminPanel isSA={view==="superadmin"} saData={view==="subadmin"?userData:null}
+      clients={clients} setClients={u=>{setClients(u);sto.set("enc-clients",u);}}
+      subAdmins={subAdmins} setSubAdmins={u=>{setSA(u);sto.set("enc-subadmins",u);}}
+      logs={logs} addLog={addLog} notifs={notifs} clearNotifs={()=>setNotifs([])}
+      onLogout={handleLogout} onPreview={setPreview}/>
+  );
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
